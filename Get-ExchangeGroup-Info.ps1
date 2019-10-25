@@ -333,7 +333,7 @@ foreach ($DistribGroup in $DistributionGroups){
 
 
     Write-Host "SendAs:"
-    $Users = Get-ADPermission -identity "$DistribGroup" | where {($_.ExtendedRights -like "*Send-As*")}
+    $Users = Get-ADPermission -identity $DistribGroup.sAMAccountName | where {($_.ExtendedRights -like "*Send-As*")}
 
     #$Users
     foreach ($User in $Users){
