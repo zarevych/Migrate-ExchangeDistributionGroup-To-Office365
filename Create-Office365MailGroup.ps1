@@ -1,4 +1,4 @@
-﻿#Migrate-ExchangeDistributionGroup-To-Office365
+#Migrate-ExchangeDistributionGroup-To-Office365
 #Create-Office365MailGroup
 
 <#
