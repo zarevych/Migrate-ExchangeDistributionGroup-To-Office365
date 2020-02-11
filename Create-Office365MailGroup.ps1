@@ -69,7 +69,7 @@
 
 .NOTES
    File Name  : Config-Servers-DSC.ps1
-   Ver.       : 1.1908
+   Ver.       : 1.2002
    Written by : Andriy Zarevych
 
    Find me on :
@@ -79,7 +79,8 @@
 
    Change Log:
    V1.1908    : Initial version
-
+   V1.2002    : Add progress bar
+              : Minor fixes
 
 #>
 
@@ -221,16 +222,30 @@ catch
     Write-Host
     Break
 }
-Import-PSSession $Session -DisableNameChecking
+try {
+    Import-PSSession $Session -DisableNameChecking
+}
+catch {
+    $MsgText = $_.Exception
+    #$MsgText = $_.Exception.Message
+    Write-Log $LogFile $MsgText "Red"
+}
 
 $domain = Get-AcceptedDomain | Where-Object Default -EQ 'True'
 Write-Host
 Write-Host "*** Welcome to Exchange Online for the domain $domain ***"
 Write-Host
 
+foreach ($Group in $XMLGroupInfo.Groups.Group){
 
-foreach( $Group in $XMLGroupInfo.Groups.Group){
-    
+    #Show Progress Info
+    $MsgText = $Group.Name + " " + $Group.xmlns + "/" + $XMLGroupInfo.Groups.Group.Count
+    try {
+        Write-Progress -Activity $MsgText -Status "Progress:" -PercentComplete ($Group.xmlns/$XMLGroupInfo.Groups.Group.Count*100) -ErrorAction SilentlyContinue
+    }
+    catch {  
+    }
+
     $GroupOwners=@()
 
     Write-Log $LogFile ""
@@ -348,14 +363,39 @@ foreach( $Group in $XMLGroupInfo.Groups.Group){
 
     # RequireSenderAuthenticationEnabled
     if ($Group.RequireSenderAuthenticationEnabled.ToLower() -eq "false"){
-        Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -RequireSenderAuthenticationEnabled $false -ErrorAction Continue
+        try {
+            Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -RequireSenderAuthenticationEnabled $false -ErrorAction Continue
+        }
+        catch {
+            $MsgText = $_.Exception
+            Write-Log $LogFile $MsgText "Yellow"
+            #Continue        
+        }
     }
     if ($Group.RequireSenderAuthenticationEnabled.ToLower() -eq "true"){
-        Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -RequireSenderAuthenticationEnabled $true -ErrorAction Continue
+        try {
+            Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -RequireSenderAuthenticationEnabled $true -ErrorAction Continue
+        }
+        catch {
+            $MsgText = $_.Exception
+            Write-Log $LogFile $MsgText "Yellow"
+            #Continue
+        }
     }
-    
+
     # --- Group Membership Approval --- Join
-    Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -MemberJoinRestriction $Group.MemberJoinRestriction -ErrorAction Continue
+    try {
+        Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -MemberJoinRestriction $Group.MemberJoinRestriction -ErrorAction Stop
+    }
+    catch {
+        #$_.Exception
+        #$_.Exception.Message
+        $MsgText = $_.Exception.Message
+        Write-Log $LogFile $MsgText "Yellow"
+        $MsgText = "WARNING: Check Directory Sync or on-premises group " + $Group.Alias
+        Write-Log $LogFile $MsgText "Red"
+        Continue
+    }
     # --- Group Membership Approval --- Leave
     Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -MemberDepartRestriction $Group.MemberDepartRestriction -ErrorAction Continue
     
@@ -365,9 +405,10 @@ foreach( $Group in $XMLGroupInfo.Groups.Group){
     # --- Advanced --- ReportTo
     #Set-DistributionGroup -Identity $Group.Alias -BypassSecurityGroupManagerCheck -ReportToManagerEnabled $Group.ReportToManager -ReportToOriginatorEnabled $Group.ReportToOriginator
 
-    
+    sleep 1
+
 }
-#>
+
 
 write-host
 Write-Log $LogFile "Disconnecting from Exchange on-line"
