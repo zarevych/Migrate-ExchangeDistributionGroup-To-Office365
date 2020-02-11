@@ -82,7 +82,7 @@
 
 .NOTES
    File Name  : Get-ExchangeGroup-Info.ps1
-   Ver.       : 1.1908
+   Ver.       : 1.2002
    Written by : Andriy Zarevych
 
    Find me on :
@@ -92,7 +92,7 @@
 
    Change Log:
    V1.1908    : Initial version
-
+   V1.2002    : Add progress bar
 
 #>
 
@@ -120,7 +120,7 @@ param(
     # Set the Log file Name
     [Parameter(Mandatory=$false, HelpMessage="Enter log file name, example: .\Log.txt", ValueFromPipelineByPropertyName=$true)]    
     [string]$LogFile = ".\Log_$(Get-Date -f 'yyyy-MM-dd').txt",
-
+ 
     # Confirm
     [bool]$Confirm = $false
 )
@@ -242,6 +242,10 @@ $GroupCount = 1
 foreach ($DistribGroup in $DistributionGroups){
     $GroupDisplayName=$DistribGroup.DisplayName
     
+    #Show Progress Info
+    $MsgText = $GroupDisplayName + " " + $GroupCount + "/" + $DistributionGroups.Count
+    Write-Progress -Activity $MsgText -Status "Progress:" -PercentComplete ($GroupCount/$DistributionGroups.Count*100)
+
     $MsgText = "Group: "+ $DistribGroup
     Write-Log $LogFile $MsgText
 
