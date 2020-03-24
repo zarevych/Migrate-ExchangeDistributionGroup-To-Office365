@@ -10,9 +10,9 @@
   
 .DESCRIPTION
  Get Exchange Distribution Group Info.
- Prepare xml-file with group info.
+ Prepare xml-file with group info for migrating with script .\Create-Office365MailGroup.ps1
  
- Run on Exchange Management Shell or 
+ Run on Exchange Management Shell or PowerShell
 
  
  Usage:
@@ -24,7 +24,8 @@
 
 
 .PARAMETER DistributionGroup
-
+    Set Distribution Group(s)
+    By default get all Exchange DistribGroups
     Example: -DistributionGroup "MyDistributionGroup"
     Example: -DistributionGroup "Office*", "Department*"
     Example: -DistributionGroup "MyDistributionGroup", "Office*"
@@ -93,7 +94,10 @@
    Change Log:
    V1.1908    : Initial version
    V1.2002    : Add progress bar
-
+   V1.2003    : Add pemove dublicate distrib group name
+              : Changes "Disable-DistributionGroup and move to $TargetOU"
+              : Changes for "Send As"
+              : Some other minor changes
 #>
 
 
@@ -200,7 +204,7 @@ Write-Log $LogFile $SMTPDomains
 # Get Exchange Distribution or Security Group
 if ($DistributionGroup){
     $DistributionGroup = $DistributionGroup -split ","
-    $DistributionGroup
+    #$DistributionGroup
     if ($DistributionGroup.Count -eq 1) {
         $DistribGroup = [system.String]::Join(" ", $DistributionGroup)
         $DistributionGroups = Get-DistributionGroup $DistribGroup -ErrorAction SilentlyContinue
@@ -219,12 +223,17 @@ if ($DistributionGroups -eq $null){
     Write-Log $LogFile ""
     break
 }
-$DistributionGroups
-#$DistributionGroups.Count
+
+$DistributionGroups = $DistributionGroups | select -Unique
+$MsgText = "Selected Group(s) " + $DistributionGroups.Count
+Write-Log $LogFile $MsgText
+foreach ($DistribGroup in $DistributionGroups) {   
+    Write-Log $LogFile $DistribGroup
+}
 Write-Host
 
 
-# Create The Document
+# Create The XML Document
 $XmlWriter = New-Object System.XMl.XmlTextWriter($XMLFile, $Null)
 
 # Set The Formatting
@@ -337,8 +346,10 @@ foreach ($DistribGroup in $DistributionGroups){
 
 
     Write-Host "SendAs:"
-    $Users = Get-ADPermission -identity $DistribGroup.sAMAccountName | where {($_.ExtendedRights -like "*Send-As*")}
-
+    $Users = Get-ADPermission -identity $DistribGroup.Name | where {($_.ExtendedRights -like "*Send-As*")}
+#    $GroupCount = $GroupCount + 1
+#    continue
+    
     #$Users
     foreach ($User in $Users){
         try {
@@ -416,34 +427,80 @@ foreach ($DistribGroup in $DistributionGroups){
     #
     $xmlWriter.WriteEndElement() # <-- Closing Group
 
+    # Group Cout + 1
+    Write-Host
+    $GroupCount = $GroupCount + 1
 
-    #
-    # Disable-DistributionGroup and move to $TargetOU
-    #
-    if ($Confirm){
+    sleep 1
+}
+
+#
+# Disable-DistributionGroup and move to $TargetOU
+#
+if ($Confirm){
+    $MsgText = "Disable distribution group set -Confirm:$Confirm"
+    Write-Log $LogFile $MsgText
+
+    $GroupCount = 1
+
+    foreach ($DistribGroup in $DistributionGroups){
+        $GroupDisplayName=$DistribGroup.DisplayName
+    
+        #Show Progress Info
+        $MsgText = $GroupDisplayName + " " + $GroupCount + "/" + $DistributionGroups.Count
+        Write-Progress -Activity $MsgText -Status "Progress:" -PercentComplete ($GroupCount/$DistributionGroups.Count*100)
+
+        $MsgText = "Group: "+ $DistribGroup
+        Write-Log $LogFile $MsgText
+
+
+        #
+        # Disable-DistributionGroup and move to $TargetOU
+        #
+ 
         $MsgText = "Disable distribution group " + $DistribGroup
         Write-Log $LogFile $MsgText
-        Disable-DistributionGroup -Identity $DistribGroup -Confirm:$false
+        try {
+            Disable-DistributionGroup -Identity $DistribGroup -Confirm:$false
+        }
+        catch {
+            $MsgText = "The operation ""Disable distribution group"" couldn't be performed because object " + $DistribGroup + " couldn't be found"
+            Write-Log $LogFile $MsgText Red
+            Continue
+        }
         
         # Move DistributionGroup to $TargetOU
         if ($TargetOU){
             if([adsi]::Exists("LDAP://$TargetOU")) {
                 $MsgText = "Move AD group " + $DistribGroup + " to " + $TargetOU
                 Write-Log $LogFile $MsgText
-                Get-ADGroup $DistribGroup.Name | Move-ADObject -identity {$_.objectguid} -TargetPath $TargetOU
+                try {
+                    Get-ADGroup $DistribGroup.Name | Move-ADObject -identity {$_.objectguid} -TargetPath $TargetOU
+                }
+                catch {
+                    $MsgText = "The operation ""Move ADGroup"" couldn't be performed because object " + $DistribGroup + " couldn't be found"
+                    Write-Log $LogFile $MsgText Red
+                    Continue               
+                }
            }
            else{
                 $MsgText = "Warning. Object not found: " + $TargetOU
                 Write-Log $LogFile $MsgText "Yellow"
            }
         }
+    
+        Write-Host
+        $GroupCount = $GroupCount + 1
+
+        sleep 2
     }
 
-    Write-Host
-    $GroupCount = $GroupCount + 1
-
-    sleep 1
 }
+else {
+    $MsgText = "Disable distribution group -Confirm:$Confirm"
+    Write-Log $LogFile $MsgText
+}
+
 
 # Write the Document
 
